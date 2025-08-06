@@ -57,18 +57,28 @@ pip install datapopy
 Here’s how to get started:
 
 ```python
-from datapopy import PoliceClient
+from data_police_uk.datapopy import DataPoliceUK
 
-client = PoliceClient()
+client = DataPoliceUK()
 
 # Get all UK police forces
-forces = client.get_forces()
+forces = client.LIST_OF_FORCES
 
-# Fetch street-level crimes at a location
-crimes = client.get_crimes_at_location(lat=51.5074, lng=-0.1278, date="2023-07")
+from data_police_uk.datapopy import CrimesData
 
+crimes_data = CrimesData()
+# Fetch street-level shoplifting crimes at a location
+crimes = crimes_data.get_street_level_crimes_by_type(crime_id="shoplifting",
+                                            lat=52.629729,
+                                       lng=-1.131592,
+                                       year="2025",
+                                       month="01")
+
+from data_police_uk.datapopy import Neighborhoods
+
+neighborhood_data = Neighborhoods("metropolitan")
 # Search neighbourhood info for a specific force
-neighbourhoods = client.get_neighbourhoods("metropolitan")
+neighbourhoods = neighborhood_data.ALL_NEIGHBORHOOD_IDS_AND_NAMES
 ```
 
 ---
@@ -79,10 +89,14 @@ neighbourhoods = client.get_neighbourhoods("metropolitan")
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from datapopy import PoliceClient
+from data_police_uk.datapopy import CrimesData
 
-client = PoliceClient()
-data = client.get_crimes_at_location(lat=51.5074, lng=-0.1278, date="2023-06")
+crimes_data = CrimesData()
+data = crimes_data.get_all_street_level_crimes(
+                                            lat=52.629729,
+                                       lng=-1.131592,
+                                       year="2025",
+                                       month="01")
 
 df = pd.DataFrame(data)
 df['category'].value_counts().plot(kind='bar', title="Crime Categories in London")
