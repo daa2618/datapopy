@@ -64,6 +64,8 @@ client = DataPoliceUK()
 # Get all UK police forces
 forces = client.LIST_OF_FORCES
 
+---
+# Crimes Data
 from data_police_uk.datapopy import CrimesData
 
 crimes_data = CrimesData()
@@ -73,7 +75,8 @@ crimes = crimes_data.get_street_level_crimes_by_type(crime_id="shoplifting",
                                        lng=-1.131592,
                                        year="2025",
                                        month="01")
-
+---
+# Neighborhoods data
 from data_police_uk.datapopy import Neighborhoods
 
 neighborhood_data = Neighborhoods("metropolitan")
