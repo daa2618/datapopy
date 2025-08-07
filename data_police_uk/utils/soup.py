@@ -33,7 +33,7 @@ class Soup:
         self._soup = None
         self._all_extensions = None
 
-    def make_soup(self,features="html.parser", await_response:bool=False) -> Optional[bs]:
+    def make_soup(self,features="html.parser") -> Optional[bs]:
         """Creates a BeautifulSoup object from the response content.
 
         Args:
@@ -48,7 +48,7 @@ class Soup:
         if self._soup is None:
             try:
                 print(f"Making soup from {self.url}")
-                soup = bs(self._response.assert_response(await_response).content, features=features)
+                soup = bs(self._response.assert_response().content, features=features)
                 print("Soup made")
                 self._soup = soup
             except Exception as e:
@@ -78,7 +78,7 @@ class Soup:
             [{'title': 'Link 1', 'url': 'https://www.example.com/page1'}, 
             {'title': 'Link 2', 'url': 'https://www.anothersite.com/page2'}]
         """
-        soup = self.make_soup(await_response=await_response)
+        soup = self.make_soup()
         if not soup:
             return
         

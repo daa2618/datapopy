@@ -21,7 +21,7 @@ class CustomDownload:
         self._data_url = f"{self._url}/data"
         self._made_soup = None#Soup(self._data_url).make_soup()
         #print("Custom Download Crimes Data:\n\t",self._soup.find("div",{"id":"downloads"}).find("p").text)
-    
+    @property
     def _soup(self):
         if self._made_soup is None:
             self._made_soup = Soup(self._data_url).make_soup()
