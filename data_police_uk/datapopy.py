@@ -1,6 +1,14 @@
 
 import json, re, datetime, shapely, geopandas as gpd
+from pathlib import Path
+import sys
+pardir = Path(__file__).resolve().parent
+if str(pardir) not in sys.path:
+    sys.path.insert(0, str(pardir))
 from utils.response import Response
+from utils.strings_and_lists import ListOperations
+from utils.log_helper import BasicLogger
+
 from typing import Optional,List,Union,Dict,Any
 
 class NeighborhoodNotFound(Exception):
@@ -10,6 +18,7 @@ class DataPoliceUK:
     def __init__(self,**kwargs):
         self.base_url = "https://data.police.uk/api"
         self._forces = None
+        self._logger = BasicLogger(log_directory=None, logger_name="DataPoliceUK", verbose=False)
         super().__init__(**kwargs)
     
     @property
@@ -20,7 +29,11 @@ class DataPoliceUK:
         return self.get_response(url=f"{self.base_url}/crimes-street-dates")
     
     def get_response(self, url, **kwargs):
-        res= json.loads(Response(url=url, **kwargs).assert_response().content)
+        try:
+            res= json.loads(Response(url=url, **kwargs).assert_response().content)
+        except Exception as e:
+            self._logger.error(f"Error retrieving data from {url}", str(e))
+            return None
         if res:
             return res
         else:
@@ -41,15 +54,19 @@ class DataPoliceUK:
         return [x.get("id") for x in self.LIST_OF_FORCES]
         
     def filter_for_force(self, force:str)->Optional[List[str]]:
-        found_names=[x for x in self.ALL_NAMES if re.findall(force,x, re.IGNORECASE)]
-        matching_ids=[x.get("id") for x in self.LIST_OF_FORCES if x.get("name") in found_names]
-        if not found_names:
-            found_ids = [x for x in self.ALL_FORCE_IDS if re.findall(force,x, re.IGNORECASE)]
-            matching_ids=[x.get("id") for x in self.LIST_OF_FORCES if x.get("id") in found_ids]
-        if not found_names or not matching_ids:
-            return None
-        else:
-            return matching_ids
+
+        list_searcher = ListOperations(self.ALL_FORCE_IDS, search_string = force)
+        #found_names=[x for x in self.ALL_NAMES if re.findall(force,x, re.IGNORECASE)]
+        #matching_ids=[x.get("id") for x in self.LIST_OF_FORCES if x.get("name") in found_names]
+        #if not found_names:
+        #    found_ids = [x for x in self.ALL_FORCE_IDS if re.findall(force,x, re.IGNORECASE)]
+        #    matching_ids=[x.get("id") for x in self.LIST_OF_FORCES if x.get("id") in found_ids]
+        #if not found_names or not matching_ids:
+        #    return None
+        #else:
+        #    return matching_ids
+        return list_searcher.search_list_by_snowball()
+    
     
     def find_force_for_neighborhood_coords(self, lat:Union[str,float], lng:Union[str,float]):
         """
@@ -70,7 +87,7 @@ class DataPoliceUK:
         date = self.get_response(url=f"{self.base_url}/crime-last-updated").get("date")
         date = datetime.datetime.strftime(datetime.datetime.strptime(date, "%Y-%m-%d"),"%d %B %Y"
                                          )
-        print(f"The data were last updated on {date}")
+        self._logger.info(f"The data were last updated on {date}")
         return date
 
 
@@ -92,6 +109,8 @@ class DataForForce(DataPoliceUK):
 class CrimesData(DataPoliceUK):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self._default_lat = 51.509865
+        self._default_lng = -0.118092
         #self.force_id = force_id
     
     @property
@@ -108,18 +127,20 @@ class CrimesData(DataPoliceUK):
         return [x.get("url") for x in self.ALL_CRIME_CATEGORIES]
 
     def filter_crime_id_for_name(self,crime:str)->Optional[List[str]]:
-        return [x.get("url") for x in self.ALL_CRIME_CATEGORIES if x.get("name")==crime][0]
+        found_crimes = ListOperations(self.ALL_CRIME_NAMES, search_string = crime).search_list_by_snowball()
+        return [x.get("url") for x in self.ALL_CRIME_CATEGORIES if x.get("name") in found_crimes]
         
-    def get_crime_id_for_crime(self, crime:str)->Optional[List[str]]:
-        found_names=[x for x in self.ALL_CRIME_NAMES if re.findall(crime,x, re.IGNORECASE)]
-        matching_ids=[x.get("url") for x in self.ALL_CRIME_CATEGORIES if x.get("name") in found_names]
-        if not found_names:
-            found_ids = [x for x in self.ALL_CRIME_IDS if re.findall(crime,x, re.IGNORECASE)]
-            matching_ids=[x.get("url") for x in self.ALL_CRIME_CATEGORIES if x.get("url") in found_ids]
-        if not found_names or not matching_ids:
-            return None
-        else:
-            return matching_ids
+        
+    #def get_crime_id_for_crime(self, crime:str)->Optional[List[str]]:
+    #    found_names=[x for x in self.ALL_CRIME_NAMES if re.findall(crime,x, re.IGNORECASE)]
+    #    matching_ids=[x.get("url") for x in self.ALL_CRIME_CATEGORIES if x.get("name") in found_names]
+    #    if not found_names:
+    #        found_ids = [x for x in self.ALL_CRIME_IDS if re.findall(crime,x, re.IGNORECASE)]
+    #        matching_ids=[x.get("url") for x in self.ALL_CRIME_CATEGORIES if x.get("url") in found_ids]
+    #    if not found_names or not matching_ids:
+    #        return None
+    #    else:
+    #        return matching_ids
         
         
     def get_crime_url(self,crime_id:str)->str:
@@ -152,13 +173,8 @@ class CrimesData(DataPoliceUK):
         url = self.get_crime_url(crime_id)
         
         params = {}
-        if lat and lng:
-            params.update({
-            "lat":float(lat),
-            "lng":float(lng),
-            
-        })
-        elif location_id:
+        
+        if location_id:
             params.update({
                 
                 "location_id":int(location_id)
@@ -168,10 +184,19 @@ class CrimesData(DataPoliceUK):
                 
                 "poly" : bounding_box
             })
+        else:
+            
+            
+            params.update({
+            "lat":float(lat) if lat else self._default_lat,
+            "lng":float(lng) if lng else self._default_lng,
+
+        })
+            
             
         if month and year:
             params.update({"date" : f"{year}-{month}"})
-        print(params)
+        self._logger.info(params)
         return self.get_response(url=url,
                                params=params)
         
@@ -229,13 +254,8 @@ class CrimesData(DataPoliceUK):
             The latest month will be shown by default
         """
         params = {}
-        if lat and lng:
-            params.update({
-            "lat":float(lat),
-            "lng":float(lng),
-            
-        })
-        elif location_id:
+        
+        if location_id:
             params.update({
                 
                 "location_id":int(location_id)
@@ -245,6 +265,13 @@ class CrimesData(DataPoliceUK):
                 
                 "poly" : bounding_box
             })
+        else:
+            
+            params.update({
+            "lat":float(lat) if lat else self._default_lat,
+            "lng":float(lng) if lng else self._default_lng,
+
+        })
             
         if month and year:
             params.update({"date" : f"{year}-{month}"})
@@ -268,9 +295,9 @@ class Neighborhoods(DataPoliceUK):
         List of neighbourhoods for a force
         """
         if self.neighborhoods is None:
-            #print(self.force_url)
+            #self._logger.info(self.force_url)
             url =f"{self.force_url}/neighbourhoods"
-            #print(url)
+            #self._logger.info(url)
             self.neighborhoods = self.get_response(url=url)
         return self.neighborhoods
 
@@ -282,21 +309,25 @@ class Neighborhoods(DataPoliceUK):
         return [x.get("id") for x in self.ALL_NEIGHBORHOOD_IDS_AND_NAMES]
     
     def filter_neighborhood_id_for_name(self,neighborhood_name)->Optional[List[str]]:
-        neighborhoods=self.ALL_NEIGHBORHOOD_NAMES
-        assert neighborhood_name in neighborhoods, f"Neighborhood not found for force\nAvailable neighborhoods: {', '.join(neighborhoods)}"
-        return [x.get("id") for x in self.ALL_NEIGHBORHOOD_IDS_AND_NAMES if x.get("name")==neighborhood_name][0]
+        #neighborhoods=self.ALL_NEIGHBORHOOD_NAMES
+        #assert neighborhood_name in neighborhoods, f"Neighborhood not found for force\nAvailable neighborhoods: {', '.join(neighborhoods)}"
+        #return [x.get("id") for x in self.ALL_NEIGHBORHOOD_IDS_AND_NAMES if x.get("name")==neighborhood_name][0]
+        filtered_names = ListOperations(self.ALL_NEIGHBORHOOD_NAMES, search_string = neighborhood_name).search_list_by_snowball()
+        if not filtered_names:
+            return None
+        return [x for x in self.ALL_NEIGHBORHOOD_IDS_AND_NAMES if x.get("name") in filtered_names]
 
-    def get_neighborhood_id_for_force(self, neighborhood_name:str)->Optional[List[str]]:
-        found_names=[x for x in self.ALL_NEIGHBORHOOD_NAMES if re.findall(neighborhood_name,x, re.IGNORECASE)]
-        matching_ids=[x.get("id") for x in self.ALL_NEIGHBORHOOD_IDS_AND_NAMES if x.get("name") in found_names]
-        if not found_names:
-            found_ids = [x for x in self.ALL_NEIGHBORHOOD_IDS if re.findall(neighborhood_name,x, re.IGNORECASE)]
-            matching_ids=[x.get("id") for x in self.ALL_NEIGHBORHOOD_IDS_AND_NAMES if x.get("id") in found_ids]
-        if not found_names or not matching_ids:
-            raise NeighborhoodNotFound(f"No matching neighborhood IDs was found\nSelect one from {self.ALL_NEIGHBORHOOD_NAMES}")
-        else:
-            return matching_ids
-    
+    #def get_neighborhood_id_for_force(self, neighborhood_name:str)->Optional[List[str]]:
+        #found_names=[x for x in self.ALL_NEIGHBORHOOD_NAMES if re.findall(neighborhood_name,x, re.IGNORECASE)]
+        #matching_ids=[x.get("id") for x in self.ALL_NEIGHBORHOOD_IDS_AND_NAMES if x.get("name") in found_names]
+        #if not found_names:
+        #    found_ids = [x for x in self.ALL_NEIGHBORHOOD_IDS if re.findall(neighborhood_name,x, re.IGNORECASE)]
+        #    matching_ids=[x.get("id") for x in self.ALL_NEIGHBORHOOD_IDS_AND_NAMES if x.get("id") in found_ids]
+        #if not found_names or not matching_ids:
+        #    raise NeighborhoodNotFound(f"No matching neighborhood IDs was found\nSelect one from {self.ALL_NEIGHBORHOOD_NAMES}")
+        #else:
+        #    return matching_ids
+        #return ListOperations()
     def assert_neighborhood_id(self, neighborhood_id:Union[str,int]):
         neighborhood_ids = self.ALL_NEIGHBORHOOD_IDS
         assert neighborhood_id in neighborhood_ids, f"Neighborhood ID not found for force\nAvailable IDs: {', ' .join(neighborhood_ids)}"
@@ -344,7 +375,7 @@ class Neighborhoods(DataPoliceUK):
         self.assert_neighborhood_id(neighborhood_id)
         events=self.get_response(url=f"{self.get_neighborhood_url(neighborhood_id)}/events")
         if not events:
-            print("No events were found")
+            self._logger.info("No events were found")
         else:
             return events
         
@@ -370,13 +401,8 @@ class StopAndSearches(DataPoliceUK):
                 location_id:Union[str,int]=None,
                 bounding_box:Union[List[str], List[float]]=None)->Dict[str,Any]:
         params = {}
-        if lat and lng:
-            params.update({
-            "lat":float(lat),
-            "lng":float(lng),
-            
-        })
-        elif location_id:
+        
+        if location_id:
             params.update({
                 
                 "location_id":int(location_id)
@@ -386,6 +412,14 @@ class StopAndSearches(DataPoliceUK):
                 
                 "poly" : bounding_box
             })
+        else:
+            
+            params.update({
+            "lat":float(lat) if lat else self._default_lat,
+            "lng":float(lng) if lng else self._default_lng,
+
+        })
+        self._logger.info(params)
             
         if month and year:
             params.update({"date" : f"{year}-{month}"})
