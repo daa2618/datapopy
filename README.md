@@ -1,158 +1,172 @@
 # datapopy
 
-**datapopy** is a Python wrapper to work with [data.police.uk](https://data.police.uk) easily and reliably. It simplifies accessing UK police data via their public API, helping you fetch, filter, and analyze crime and policing information with minimal setup.
+`datapopy` is a Python wrapper for the public [data.police.uk](https://data.police.uk) API. It smooths over the raw HTTP interface so you can explore UK policing data - forces, neighbourhoods, crimes, and stop-and-search reports - without rebuilding the basics every time.
 
----
+## Features
+- Retrieve the catalogue of UK police forces and fuzzy-search by name or ID.
+- Query street-level crimes by category, coordinates, location IDs, or custom polygons.
+- Pull outcomes, stop-and-search data, and other time-bound datasets with consistent helpers.
+- Discover neighbourhood details including boundaries, priorities, police teams, and events.
+- Generate GeoDataFrames for neighbourhood boundaries when `geopandas` is available.
 
-## 🚀 Features
+## Requirements
+- Python 3.8 or newer
+- Core dependency: `requests` (installed automatically)
+- Optional: `pandas`/`matplotlib` for analysis and plotting, `geopandas`/`shapely` for spatial workflows
 
-- 🔍 Search crime data by location, date, or category
-- 🗺️ Fetch street-level crime and outcomes
-- 🧑‍✈️ Access police force information
-- 🧩 Fetch neighbourhood boundary and team data
-- ⚙️ Simple Pythonic interface around the raw API
-- 🧪 Designed for analysts, data scientists, and developers
+## Installation
 
----
-
-## 🧪 Prerequisites
-
-- Python 3.8+
-- `requests` library (installed automatically with pip)
-
-Optional but recommended:
-
-- `pandas` for data manipulation
-- `matplotlib` or `plotly` for visualizations
-
-Create and activate a virtual environment:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
----
-
-## 📦 Installation
-
-Clone and install locally:
-
+### From source
 ```bash
 git clone https://github.com/daa2618/datapopy.git
 cd datapopy
-pip install .
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# macOS / Linux
+source .venv/bin/activate
+pip install -e .
 ```
 
-Or install directly using pip (once published on PyPI):
-
+### From PyPI
+The project is preparing for an initial release. Once published you will be able to run:
 ```bash
 pip install datapopy
 ```
 
----
-
-## 🎯 Usage
-
-Here’s how to get started:
-
+## Quickstart
 ```python
 from data_police_uk.datapopy import DataPoliceUK
 
 client = DataPoliceUK()
-
-# Get all UK police forces
 forces = client.LIST_OF_FORCES
 
----
-# Crimes Data
+print(f"{len(forces)} police forces found")
+print(forces[0])
+```
+`LIST_OF_FORCES` returns a list of dictionaries with `id`/`name` keys that can be passed to the specialist helpers below.
+
+## Working with crime data
+```python
 from data_police_uk.datapopy import CrimesData
 
-crimes_data = CrimesData()
-# Fetch street-level shoplifting crimes at a location
-crimes = crimes_data.get_street_level_crimes_by_type(crime_id="shoplifting",
-                                            lat=52.629729,
-                                       lng=-1.131592,
-                                       year="2025",
-                                       month="01")
----
-# Neighborhoods data
-from data_police_uk.datapopy import Neighborhoods
+crimes = CrimesData()
 
-neighborhood_data = Neighborhoods("metropolitan")
-# Search neighbourhood info for a specific force
-neighbourhoods = neighborhood_data.ALL_NEIGHBORHOOD_IDS_AND_NAMES
+# Fetch shoplifting incidents around Leicester in January 2024
+shoplifting = crimes.get_street_level_crimes_by_type(
+    crime_id="shoplifting",
+    lat=52.629729,
+    lng=-1.131592,
+    year="2024",
+    month="01",
+)
+
+# Fetch all available street-level crimes for the same point
+all_crimes = crimes.get_all_street_level_crimes(
+    lat=52.629729,
+    lng=-1.131592,
+    year="2024",
+    month="01",
+)
+
+# Use a bounding box (poly) if you need a custom polygon
+poly = [
+    "52.636,-1.135",
+    "52.636,-1.120",
+    "52.622,-1.120",
+    "52.622,-1.135",
+]
+crimes_in_area = crimes.get_all_street_level_crimes(bounding_box=poly)
 ```
 
----
+`CrimesData` exposes additional helpers for outcomes, available datasets, and crime categories. Consult the inline docstrings for more options.
 
-## 🧠 Example: Map street crimes in London
+## Exploring neighbourhoods
+```python
+from data_police_uk.datapopy import Neighborhoods
 
+met = Neighborhoods("metropolitan")
+
+# List neighbourhoods served by the Metropolitan Police
+neighbourhoods = met.ALL_NEIGHBORHOOD_IDS_AND_NAMES
+
+# Fetch detailed information and priorities
+kensington = met.get_specific_neighborhood_info("EA0201")
+priority_items = met.get_neighborhood_priorities("EA0201")
+
+# Convert all neighbourhood polygons to a GeoDataFrame (requires geopandas)
+gdf = met.POLICE_FORCE_BOUNDARY
+```
+
+## Stop and search data
+```python
+from data_police_uk.datapopy import StopAndSearches
+
+stop_search = StopAndSearches()
+march_stops = stop_search.get_stop_searches_for_coords(
+    lat=52.629729,
+    lng=-1.131592,
+    year="2024",
+    month="03",
+)
+```
+
+## Example: Visualise crime counts
 ```python
 import pandas as pd
 import matplotlib.pyplot as plt
 
 from data_police_uk.datapopy import CrimesData
 
-crimes_data = CrimesData()
-data = crimes_data.get_all_street_level_crimes(
-                                            lat=52.629729,
-                                       lng=-1.131592,
-                                       year="2025",
-                                       month="01")
+crimes = CrimesData()
+data = crimes.get_all_street_level_crimes(
+    lat=51.5074,
+    lng=-0.1278,
+    year="2024",
+    month="01",
+)
 
 df = pd.DataFrame(data)
-df['category'].value_counts().plot(kind='bar', title="Crime Categories in London")
+df["category"].value_counts().sort_values().plot.barh(title="London crimes (Jan 2024)")
+plt.tight_layout()
 plt.show()
 ```
+This example assumes `pandas` and `matplotlib` are installed in your environment.
 
----
+## API coverage
 
-## 🧪 API Coverage
-
-| Endpoint | Description |
-|----------|-------------|
+| Endpoint | Purpose |
+| --- | --- |
 | `/forces` | List all police forces |
-| `/forces/{id}` | Info about a force |
-| `/crimes-street/all-crime` | Crime by lat/lng |
-| `/outcomes-at-location` | Outcomes of crime |
-| `/neighbourhoods` | Areas within force |
-| `/neighbourhoods/{id}` | Specific area info |
+| `/forces/{id}` | Retrieve information about a single force |
+| `/crimes-street/{crime-id}` | Retrieve crimes by category, coordinates, or polygon |
+| `/outcomes-at-location` | Retrieve street-level outcomes |
+| `/stops-street` | Retrieve stop-and-search reports |
+| `/{force}/neighbourhoods` | List neighbourhoods served by a force |
+| `/{force}/neighbourhoods/{id}` | Retrieve details, priorities, personnel, and boundary geometry |
 
-See full API documentation: [https://data.police.uk/docs](https://data.police.uk/docs/)
+Refer to the official docs for the full API surface: <https://data.police.uk/docs/>
 
----
+## Development
+- Install dependencies with `pip install -e .[dev]` when development extras are published, or manually add the tools from `pyproject.toml`.
+- Run the test suite (when available) with `pytest`.
+- Use a virtual environment to avoid polluting your global Python installation.
 
-## 🧾 Contributing
+## Contributing
+Contributions are very welcome. Helpful ways to get involved:
+- Report bugs or feature requests through GitHub Issues.
+- Improve documentation and examples.
+- Add or expand tests to cover new API endpoints.
+- Extend coverage to additional datasets (e.g. priorities, senior staff, stop-and-search outcomes).
 
-Contributions welcome! You can help by:
+Please open a pull request once your change is ready.
 
-- Submitting bug reports or feature requests via Issues
-- Improving documentation
-- Writing tests or fixing bugs
-- Extending API support (e.g., stop-and-search, priorities)
+## FAQ
+**Do I need an API key?**  
+No. The [data.police.uk](https://data.police.uk) API is open and does not require authentication.
 
-Please open a PR or reach out via GitHub Issues.
+**Is this an official wrapper?**  
+Not currently. `datapopy` is a community project that builds on top of the public API.
 
----
-
-## ⚖️ License
-
-This project is licensed under the [MIT License](LICENSE).
-
----
-
-## 🙋 FAQ
-
-**Q: Do I need an API key?**  
-A: No, the [data.police.uk](https://data.police.uk) API is public and does not require authentication.
-
-**Q: Is this an official wrapper?**  
-A: No, this is an independent project built around their open API.
-
----
-
-## 🔗 Related Projects
-
-- [UK Police Data API Docs](https://data.police.uk/docs/)
-- [data.police.uk GitHub](https://github.com/ukhomeoffice/police-api)
+## License
+This project is distributed under the [MIT License](LICENSE).
